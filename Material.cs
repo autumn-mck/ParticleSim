@@ -2,14 +2,13 @@ using Microsoft.Xna.Framework;
 
 namespace ParticleSim;
 
-public class Materials
+public static class Materials
 {
-    public static Material Air = new Material(true, false, false, false, 1, Color.Black);
-    public static Material Sand = new Material(false, false, true, true, 3, Color.Yellow);
-    public static Material Water = new Material(false, true, false, true, 2, Color.Blue);
-    public static Material Concrete = new Material(false, false, true, false, 99, Color.Gray);
-    public static Material Steam = new Material(true, false, false, true, 0, Color.AliceBlue);
-
+    public static readonly Material Air = new Material(true, false, false, false, 1, Color.Black);
+    public static readonly Material Sand = new Material(false, false, true, true, 3, Color.Yellow);
+    public static readonly Material Water = new Material(false, true, false, true, 2, Color.Blue);
+    public static readonly Material Concrete = new Material(false, false, true, false, 99, Color.Gray);
+    public static readonly Material Steam = new Material(true, false, false, true, 0, Color.AliceBlue);
 }
 
 

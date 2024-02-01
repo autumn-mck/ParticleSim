@@ -1,3 +1,2 @@
-﻿
-using var game = new ParticleSim.Game();
+﻿using var game = new ParticleSim.Game();
 game.Run();

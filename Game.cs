@@ -8,26 +8,26 @@ namespace ParticleSim;
 
 public class Game : Microsoft.Xna.Framework.Game
 {
-    private GraphicsDeviceManager _graphics;
+    private readonly GraphicsDeviceManager _graphics;
     private SpriteBatch _spriteBatch;
 
     // Window resolution
-    private Vector2 windowSize = new Vector2(1920, 1080) / 1.5f;
+    private readonly Vector2 _windowSize = new Vector2(1920, 1080) / 1.5f;
 
     // The size of the simulated area
-    private int dataHeight;
-    private int dataWidth;
+    private readonly int _dataHeight;
+    private readonly int _dataWidth;
 
     // The array used to store the simulation state
-    private Particle[,] dataArray;
+    private readonly Particle[,] _dataArray;
 
     // How many real pixels a simulation pixel takes up
-    private int scaleMod = 4;
+    private const int ScaleMod = 4;
 
-    private int prevScrollValue = 0;
-    private int addRadius = 1;
+    private int _prevScrollValue = 0;
+    private int _addRadius = 1;
 
-    private Random random = new Random();
+    private readonly Random _random = new();
 
     public Game()
     {
@@ -35,26 +35,26 @@ public class Game : Microsoft.Xna.Framework.Game
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
 
-        dataHeight = (int)(windowSize.X / scaleMod);
-        dataWidth = (int)(windowSize.Y / scaleMod);
-        dataArray = new Particle[dataHeight, dataWidth];
+        _dataHeight = (int)(_windowSize.X / ScaleMod);
+        _dataWidth = (int)(_windowSize.Y / ScaleMod);
+        _dataArray = new Particle[_dataHeight, _dataWidth];
     }
 
     protected override void Initialize()
     {
-        _graphics.PreferredBackBufferHeight = (int)windowSize.Y;
-        _graphics.PreferredBackBufferWidth = (int)windowSize.X;
+        _graphics.PreferredBackBufferHeight = (int)_windowSize.Y;
+        _graphics.PreferredBackBufferWidth = (int)_windowSize.X;
         //_graphics.IsFullScreen = true;
         _graphics.ApplyChanges();
 
         // Initialise the scene with a concrete border
-        for (int i = 0; i < dataHeight; i++)
+        for (var i = 0; i < _dataHeight; i++)
         {
-            for (int j = 0; j < dataWidth; j++)
+            for (var j = 0; j < _dataWidth; j++)
             {
-                if (i == 0 || j == 0) dataArray[i, j] = new Particle(Materials.Concrete);
-                else if (i == dataHeight - 1 || j == dataWidth - 1) dataArray[i, j] = new Particle(Materials.Concrete);
-                else dataArray[i, j] = new Particle(Materials.Air);
+                if (i == 0 || j == 0) _dataArray[i, j] = new Particle(Materials.Concrete);
+                else if (i == _dataHeight - 1 || j == _dataWidth - 1) _dataArray[i, j] = new Particle(Materials.Concrete);
+                else _dataArray[i, j] = new Particle(Materials.Air);
             }
         }
 
@@ -76,7 +76,7 @@ public class Game : Microsoft.Xna.Framework.Game
         OuterLoop();
 
         // Reset/update any needed particle properties after each frame
-        UpdateAfterSim((float)gameTime.ElapsedGameTime.TotalSeconds);
+        UpdateAfterSim();
 
         // Add new particles based on user's input
         AddFromUserInput();
@@ -89,16 +89,16 @@ public class Game : Microsoft.Xna.Framework.Game
     private void OuterLoop()
     {
         // Randomise the loop direction to make movement less predictable
-        if (random.NextDouble() < 0.5)
+        if (_random.NextDouble() < 0.5)
         {
-            for (int i = 0; i < dataHeight; i++)
+            for (var i = 0; i < _dataHeight; i++)
             {
                 InnerLoop(i);
             }
         }
         else
         {
-            for (int i = dataHeight - 1; i > -1; i--)
+            for (var i = _dataHeight - 1; i > -1; i--)
             {
                 InnerLoop(i);
             }
@@ -108,16 +108,16 @@ public class Game : Microsoft.Xna.Framework.Game
     private void InnerLoop(int i)
     {
         // Randomise the loop direction to make movement less predictable
-        if (random.NextDouble() < 0.5)
+        if (_random.NextDouble() < 0.5)
         {
-            for (int j = dataWidth - 1; j > -1; j--)
+            for (var j = _dataWidth - 1; j > -1; j--)
             {
                 UpdateParticle(i, j);
             }
         }
         else
         {
-            for (int j = 0; j < dataWidth; j++)
+            for (var j = 0; j < _dataWidth; j++)
             {
                 UpdateParticle(i, j);
             }
@@ -129,92 +129,89 @@ public class Game : Microsoft.Xna.Framework.Game
     /// </summary>
     private void UpdateParticle(int i, int j)
     {
-        Particle p = dataArray[i, j];
+        var p = _dataArray[i, j];
         // Only update the particle if it has not already been updated this frame, and the particle is dynamic
-        if (!p.HasBeenUpdated && dataArray[i, j].Material.IsDynamic)
+        if (p.HasBeenUpdated || !_dataArray[i, j].Material.IsDynamic) return;
+        p.HasBeenUpdated = true;
+
+        // If the particle is water, try to evaporate it
+        TryEvaporateWater(i, j, p);
+
+        // If the particle has a higher density than the particle directly below it, they should swap places
+        if (_dataArray[i, j + 1].Material.Density < p.Material.Density)
         {
-            p.HasBeenUpdated = true;
+            _dataArray[i, j] = _dataArray[i, j + 1];
+            _dataArray[i, j + 1] = p;
+            return;
+        }
+        // Same as above, except directly above and swap places if lower density (Mostly only for gasses)
+        if (_dataArray[i, j - 1].Material.IsGas && _dataArray[i, j - 1].Material.Density > p.Material.Density)
+        {
+            _dataArray[i, j] = _dataArray[i, j - 1];
+            _dataArray[i, j - 1] = p;
+            return;
+        }
 
-            // If the particle is water, try to evaporate it
-            TryEvaporateWater(i, j, p);
-
-            // If the particle has a higher density than the particle directly below it, they should swap places
-            if (dataArray[i, j + 1].Material.Density < p.Material.Density)
+        // Check below and to the left, and below and to the right, to check if there is space to move into
+        // Randomness is used to switch the order in which left/right are checked, to help prevent a bias to either side.
+        if (_random.NextDouble() < 0.5)
+        {
+            if (_dataArray[i + 1, j + 1].Material.Density < p.Material.Density)
             {
-                dataArray[i, j] = dataArray[i, j + 1];
-                dataArray[i, j + 1] = p;
+                _dataArray[i, j] = _dataArray[i + 1, j + 1];
+                _dataArray[i + 1, j + 1] = p;
+            }
+            else if (_dataArray[i - 1, j + 1].Material.Density < p.Material.Density)
+            {
+                _dataArray[i, j] = _dataArray[i - 1, j + 1];
+                _dataArray[i - 1, j + 1] = p;
+            }
+        }
+        else
+        {
+            if (_dataArray[i - 1, j + 1].Material.Density < p.Material.Density)
+            {
+                _dataArray[i, j] = _dataArray[i - 1, j + 1];
+                _dataArray[i - 1, j + 1] = p;
+            }
+            else if (_dataArray[i + 1, j + 1].Material.Density < p.Material.Density)
+            {
+                _dataArray[i, j] = _dataArray[i + 1, j + 1];
+                _dataArray[i + 1, j + 1] = p;
+            }
+        }
+
+        // Steam should vanish after a while
+        if (p.Material == Materials.Steam)
+        {
+
+            if (_random.NextDouble() < 0.001)
+            {
+                p.Material = Materials.Air;
                 return;
             }
-            // Same as above, except directly above and swap places if lower density (Mostly only for gasses)
-            if (dataArray[i, j - 1].Material.IsGas && dataArray[i, j - 1].Material.Density > p.Material.Density)
-            {
-                dataArray[i, j] = dataArray[i, j - 1];
-                dataArray[i, j - 1] = p;
-                return;
-            }
+        }
 
-            // Check below and to the left, and below and to the right, to check if there is space to move into
-            // Randomness is used to switch the order in which left/right are checked, to help prevent a bias to either side.
-            if (random.NextDouble() < 0.5)
-            {
-                if (dataArray[i + 1, j + 1].Material.Density < p.Material.Density)
-                {
-                    dataArray[i, j] = dataArray[i + 1, j + 1];
-                    dataArray[i + 1, j + 1] = p;
-                }
-                else if (dataArray[i - 1, j + 1].Material.Density < p.Material.Density)
-                {
-                    dataArray[i, j] = dataArray[i - 1, j + 1];
-                    dataArray[i - 1, j + 1] = p;
-                }
-            }
-            else
-            {
-                if (dataArray[i - 1, j + 1].Material.Density < p.Material.Density)
-                {
-                    dataArray[i, j] = dataArray[i - 1, j + 1];
-                    dataArray[i - 1, j + 1] = p;
-                }
-                else if (dataArray[i + 1, j + 1].Material.Density < p.Material.Density)
-                {
-                    dataArray[i, j] = dataArray[i + 1, j + 1];
-                    dataArray[i + 1, j + 1] = p;
-                }
-            }
-
-            // Steam should vanish after a while
-            if (p.Material == Materials.Steam)
-            {
-
-                if (random.NextDouble() < 0.001)
-                {
-                    p.Material = Materials.Air;
-                    return;
-                }
-            }
-
-            if (p.Material.IsLiquid)
-            {
-                MoveToSides(i, j);
-            }
-            else if (p.Material.IsGas)
-            {
-                MoveToSides(i, j);
-            }
+        if (p.Material.IsLiquid)
+        {
+            MoveToSides(i, j);
+        }
+        else if (p.Material.IsGas)
+        {
+            MoveToSides(i, j);
         }
     }
 
     /// <summary>
     /// Reset the HasBeenUpdated property for the next frame and update the particle's timer
     /// </summary>
-    private void UpdateAfterSim(float elapsedTime)
+    private void UpdateAfterSim()
     {
-        for (int i = 0; i < dataHeight; i++)
+        for (var i = 0; i < _dataHeight; i++)
         {
-            for (int j = 0; j < dataWidth; j++)
+            for (var j = 0; j < _dataWidth; j++)
             {
-                dataArray[i, j].HasBeenUpdated = false;
-                dataArray[i, j].Timer += elapsedTime;
+                _dataArray[i, j].HasBeenUpdated = false;
             }
         }
     }
@@ -224,42 +221,37 @@ public class Game : Microsoft.Xna.Framework.Game
     /// </summary>
     private void AddFromUserInput()
     {
-        MouseState mState = Mouse.GetState();
+        var mState = Mouse.GetState();
 
-        int scrollDiff = 0;
-        if (prevScrollValue > mState.ScrollWheelValue) scrollDiff--;
-        else if (prevScrollValue < mState.ScrollWheelValue) scrollDiff++;
-        prevScrollValue = mState.ScrollWheelValue;
-        addRadius += scrollDiff;
+        var scrollDiff = 0;
+        if (_prevScrollValue > mState.ScrollWheelValue) scrollDiff--;
+        else if (_prevScrollValue < mState.ScrollWheelValue) scrollDiff++;
+        _prevScrollValue = mState.ScrollWheelValue;
+        _addRadius += scrollDiff;
 
-        addRadius = Math.Clamp(addRadius, 1, 15);
+        _addRadius = Math.Clamp(_addRadius, 1, 15);
 
-        int x = mState.X / scaleMod;
-        int y = mState.Y / scaleMod;
-        for (int i = x - addRadius; i <= x + addRadius; i++)
+        int x = mState.X / ScaleMod;
+        int y = mState.Y / ScaleMod;
+        for (var i = x - _addRadius; i <= x + _addRadius; i++)
         {
-            for (int j = y - addRadius; j <= y + addRadius; j++)
+            for (var j = y - _addRadius; j <= y + _addRadius; j++)
             {
-                if (i > 0 && j > 0 && i < dataHeight - 1 && j < dataWidth - 1)
+                if (i <= 0 || j <= 0 || i >= _dataHeight - 1 || j >= _dataWidth - 1) continue;
+                if (!(MathF.Sqrt((j - y) * (j - y) + (i - x) * (i - x)) < _addRadius)) continue;
+                try
                 {
-                    if (MathF.Sqrt((j - y) * (j - y) + (i - x) * (i - x)) < addRadius)
+                    if (_dataArray[i, j].Material == Materials.Air)
                     {
-
-                        try
-                        {
-                            if (dataArray[i, j].Material == Materials.Air)
-                            {
-                                if (mState.LeftButton == ButtonState.Pressed)
-                                    dataArray[i, j] = new Particle(Materials.Sand);
-                                else if (mState.RightButton == ButtonState.Pressed)
-                                    dataArray[i, j] = new Particle(Materials.Water);
-                                else if (mState.MiddleButton == ButtonState.Pressed)
-                                    dataArray[i, j] = new Particle(Materials.Concrete);
-                            }
-                        }
-                        catch { }
+                        if (mState.LeftButton == ButtonState.Pressed)
+                            _dataArray[i, j] = new Particle(Materials.Sand);
+                        else if (mState.RightButton == ButtonState.Pressed)
+                            _dataArray[i, j] = new Particle(Materials.Water);
+                        else if (mState.MiddleButton == ButtonState.Pressed)
+                            _dataArray[i, j] = new Particle(Materials.Concrete);
                     }
                 }
+                catch { }
             }
         }
 
@@ -270,17 +262,11 @@ public class Game : Microsoft.Xna.Framework.Game
     /// </summary>
     private void TryEvaporateWater(int i, int j, Particle p)
     {
-        if (p.Material.IsLiquid)
-        {
-            if (dataArray[i, j - 1].Material.IsGas && dataArray[i - 1, j].Material.IsGas && dataArray[i, j - 1].Material.IsGas)
-            {
-                if (random.NextDouble() < 0.001)
-                {
-                    p.Material = Materials.Steam;
-                    return;
-                }
-            }
-        }
+        if (!p.Material.IsLiquid) return;
+        if (!_dataArray[i, j - 1].Material.IsGas || !_dataArray[i - 1, j].Material.IsGas ||
+            !_dataArray[i, j - 1].Material.IsGas) return;
+        if (!(_random.NextDouble() < 0.001)) return;
+        p.Material = Materials.Steam;
     }
 
     /// <summary>
@@ -288,25 +274,25 @@ public class Game : Microsoft.Xna.Framework.Game
     /// </summary>
     private void MoveToSides(int i, int j)
     {
-        Particle p = dataArray[i, j];
-        if (random.NextDouble() < 0.5)
+        var p = _dataArray[i, j];
+        if (_random.NextDouble() < 0.5)
         {
-            if (dataArray[i + 1, j].Material.Density < p.Material.Density || dataArray[i + 1, j].Material.IsGas)
+            if (_dataArray[i + 1, j].Material.Density < p.Material.Density || _dataArray[i + 1, j].Material.IsGas)
             {
                 LiquidTryMove(1, i, j);
             }
-            else if (dataArray[i - 1, j].Material.Density < p.Material.Density || dataArray[i - 1, j].Material.IsGas)
+            else if (_dataArray[i - 1, j].Material.Density < p.Material.Density || _dataArray[i - 1, j].Material.IsGas)
             {
                 LiquidTryMove(-1, i, j);
             }
         }
         else
         {
-            if (dataArray[i - 1, j].Material.Density < p.Material.Density || dataArray[i - 1, j].Material.IsGas)
+            if (_dataArray[i - 1, j].Material.Density < p.Material.Density || _dataArray[i - 1, j].Material.IsGas)
             {
                 LiquidTryMove(-1, i, j);
             }
-            else if (dataArray[i + 1, j].Material.Density < p.Material.Density || dataArray[i + 1, j].Material.IsGas)
+            else if (_dataArray[i + 1, j].Material.Density < p.Material.Density || _dataArray[i + 1, j].Material.IsGas)
             {
                 LiquidTryMove(1, i, j);
             }
@@ -315,9 +301,7 @@ public class Game : Microsoft.Xna.Framework.Game
 
     private void LiquidTryMove(int moveBy, int i, int j)
     {
-        Particle p = dataArray[i, j];
-        dataArray[i, j] = dataArray[i + moveBy, j];
-        dataArray[i + moveBy, j] = p;
+        (_dataArray[i, j], _dataArray[i + moveBy, j]) = (_dataArray[i + moveBy, j], _dataArray[i, j]);
     }
 
     protected override void Draw(GameTime gameTime)
@@ -327,11 +311,11 @@ public class Game : Microsoft.Xna.Framework.Game
         _spriteBatch.Begin();
 
         // Draw every particle
-        for (int i = 0; i < dataHeight; i++)
+        for (int i = 0; i < _dataHeight; i++)
         {
-            for (int j = 0; j < dataWidth; j++)
+            for (int j = 0; j < _dataWidth; j++)
             {
-                _spriteBatch.DrawPoint(new Vector2(i + 0.5f, j + 0.5f) * scaleMod, dataArray[i, j].Material.Colour, scaleMod);
+                _spriteBatch.DrawPoint(new Vector2(i + 0.5f, j + 0.5f) * ScaleMod, _dataArray[i, j].Material.Colour, ScaleMod);
             }
         }
 
