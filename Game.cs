@@ -131,7 +131,10 @@ public class Game : Microsoft.Xna.Framework.Game
     {
         var p = _dataArray[i, j];
         // Only update the particle if it has not already been updated this frame, and the particle is dynamic
-        if (p.HasBeenUpdated || !_dataArray[i, j].Material.IsDynamic) return;
+        if (p.HasBeenUpdated ||
+            (_dataArray[i, j].Material is Solid && ((Solid)_dataArray[i, j].Material).IsStatic))
+            return;
+
         p.HasBeenUpdated = true;
 
         // If the particle is water, try to evaporate it
@@ -145,7 +148,7 @@ public class Game : Microsoft.Xna.Framework.Game
             return;
         }
         // Same as above, except directly above and swap places if lower density (Mostly only for gasses)
-        if (_dataArray[i, j - 1].Material.IsGas && _dataArray[i, j - 1].Material.Density > p.Material.Density)
+        if (_dataArray[i, j - 1].Material is Gas && _dataArray[i, j - 1].Material.Density > p.Material.Density)
         {
             _dataArray[i, j] = _dataArray[i, j - 1];
             _dataArray[i, j - 1] = p;
@@ -182,7 +185,7 @@ public class Game : Microsoft.Xna.Framework.Game
         }
 
         // Steam should vanish after a while
-        if (p.Material == Materials.Steam)
+        if (p.Material is Steam)
         {
 
             if (_random.NextDouble() < 0.001)
@@ -192,13 +195,12 @@ public class Game : Microsoft.Xna.Framework.Game
             }
         }
 
-        if (p.Material.IsLiquid)
+        switch (p.Material)
         {
-            MoveToSides(i, j);
-        }
-        else if (p.Material.IsGas)
-        {
-            MoveToSides(i, j);
+            case Liquid:
+            case Gas:
+                MoveToSides(i, j);
+                break;
         }
     }
 
@@ -241,7 +243,7 @@ public class Game : Microsoft.Xna.Framework.Game
                 if (!(MathF.Sqrt((j - y) * (j - y) + (i - x) * (i - x)) < _addRadius)) continue;
                 try
                 {
-                    if (_dataArray[i, j].Material == Materials.Air)
+                    if (_dataArray[i, j].Material is Air)
                     {
                         if (mState.LeftButton == ButtonState.Pressed)
                             _dataArray[i, j] = new Particle(Materials.Sand);
@@ -262,9 +264,9 @@ public class Game : Microsoft.Xna.Framework.Game
     /// </summary>
     private void TryEvaporateWater(int i, int j, Particle p)
     {
-        if (!p.Material.IsLiquid) return;
-        if (!_dataArray[i, j - 1].Material.IsGas || !_dataArray[i - 1, j].Material.IsGas ||
-            !_dataArray[i, j - 1].Material.IsGas) return;
+        if (p.Material is not Liquid) return;
+        if (_dataArray[i, j - 1].Material is not Gas || _dataArray[i - 1, j].Material is not Gas ||
+            _dataArray[i, j - 1].Material is not Gas) return;
         if (!(_random.NextDouble() < 0.001)) return;
         p.Material = Materials.Steam;
     }
@@ -277,22 +279,22 @@ public class Game : Microsoft.Xna.Framework.Game
         var p = _dataArray[i, j];
         if (_random.NextDouble() < 0.5)
         {
-            if (_dataArray[i + 1, j].Material.Density < p.Material.Density || _dataArray[i + 1, j].Material.IsGas)
+            if (_dataArray[i + 1, j].Material.Density < p.Material.Density)
             {
                 LiquidTryMove(1, i, j);
             }
-            else if (_dataArray[i - 1, j].Material.Density < p.Material.Density || _dataArray[i - 1, j].Material.IsGas)
+            else if (_dataArray[i - 1, j].Material.Density < p.Material.Density)
             {
                 LiquidTryMove(-1, i, j);
             }
         }
         else
         {
-            if (_dataArray[i - 1, j].Material.Density < p.Material.Density || _dataArray[i - 1, j].Material.IsGas)
+            if (_dataArray[i - 1, j].Material.Density < p.Material.Density)
             {
                 LiquidTryMove(-1, i, j);
             }
-            else if (_dataArray[i + 1, j].Material.Density < p.Material.Density || _dataArray[i + 1, j].Material.IsGas)
+            else if (_dataArray[i + 1, j].Material.Density < p.Material.Density)
             {
                 LiquidTryMove(1, i, j);
             }
